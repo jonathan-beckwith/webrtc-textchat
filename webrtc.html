@@ -1,0 +1,275 @@
+<!doctype html>
+<html>
+<head>
+    <title>Web RTC Data Channel Experiment</title>
+</head>
+<body>
+
+    <pre id="log">This is where the messages go.</pre>
+    <input type="textbox" id="message" />
+    <input type="button" value="send" id="send" />
+
+    <br />
+
+    Room: <input type="textbox" id="room" value="$DEFAULT_NAME$"/>
+    <input type="button" value="host" id="host" />
+    <input type="button" value="join" id="join" /><br />
+
+
+    <pre id="local"></pre>
+    <pre id="remote"></pre>
+
+<script>
+Model=function a(b,c,d,e){function f(){var a=this,f={};a.on=function(a,b){(f[a]||(f[a]=[])).push(b)},a.trigger=function(a,b){for(var c=f[a],d=0;c&&d<c.length;)c[d++](b)},a.off=function(a,b){for(d=f[a]||[];b&&(c=d.indexOf(b))>-1;)d.splice(c,1);f[a]=b?d:[]};for(c in b)d=b[c],a[c]=typeof d=='function'?function(){return(d=this.apply(a,arguments))===e?a:d}.bind(d):d;a.init&&a.init.apply(a,arguments)}return f.extend=function(f){d={};for(c in b)d[c]=b[c];for(c in f)d[c]=f[c],b[c]!==e&&(d['__'+c]=b[c]);return a(d)},f},typeof module=='object'&&(module.exports=Model);
+</script>
+
+<script id="shims">
+    //Shims. All browser compatibility changes should be made in this script.
+    window.RTCPeerConnection = (
+        window.RTCPeerConnection ||
+        window.webkitRTCPeerConnection ||
+        window.mozRTCPeerConnection
+    );
+    window.RTCIceCandidate = (
+        window.RTCIceCandidate ||
+        window.mozRTCIceCandidate
+    );
+    window.RTCSessionDescription = (
+        window.RTCSessionDescription ||
+        window.mozRTCSessionDescription
+    );
+</script>
+
+<script id="interface">
+    //Interface. All interaction with the UI should be done here.
+    var log_textbox = document.getElementById('log'),
+        message_text = document.getElementById('message'),
+        send_button = document.getElementById('send'),
+
+        room_text = document.getElementById('room'),
+        host_button = document.getElementById('host'),
+        join_button = document.getElementById('join');
+
+    host_button.onclick = function () { host(room_text.value) };
+    join_button.onclick = function () { join(room_text.value) };
+    send_button.onclick = function () { send(message_text.value) };
+
+
+    function send(message) {
+        message_text.value = '';
+        log_textbox.addMessage(message);
+        channel.send(message);
+    }
+
+    log_textbox.addMessage = function(message) {
+        log_textbox.innerHTML += message;
+        log_textbox.innerHTML += '<br/>'
+    }
+
+    //Capture the enter key
+    window.addEventListener('keydown', function (e) {
+        var key = e.keyCode;
+
+        if(key === 13) {
+            send(message_text.value);
+        }
+    });
+</script>
+
+<script id="signalserver_basic">
+    //SignalServer based on localStorage
+    function SignalServer_Basic(room) {
+        this.room = room || (Math.random()*100000000000000000).toString(36);
+        console.log('signal.init::' + this.room);
+    }
+    SignalServer_Basic.prototype.get = function (key, value, callback, error) {
+
+    }
+</script>
+
+<script id="signalserver_python">
+//Connect to the demo signal server.
+function SignalServer_Python(room) {
+    //Call the base constructor
+    SignalServer_Basic.call(this, room);
+}
+//Optional line
+SignalServer_Python.prototype = Object.create(SignalServer_Basic.prototype);
+SignalServer_Python.prototype.request = function (method, data, callback, error) {
+    var xhr = new XMLHttpRequest(),
+        data = data ? JSON.stringify(data) : undefined,
+        callback = callback || function (r) { console.log(r); },
+        error = error || function (r) { console.error(r); };
+
+    xhr.open('POST','http://jon7:8003/' + method);
+    xhr.setRequestHeader('Content-Type', 'application/json');
+
+    xhr.onreadystatechange = function () {
+        if(xhr.readyState === 4 && xhr.status === 200) {
+            callback(JSON.parse(xhr.responseText));
+        }
+
+        if(xhr.readyState === 4 && xhr.status !== 200) {
+            error('ERROR::' + xhr.status + ':' + xhr.statusText);
+        }
+    }
+
+    xhr.send(data);
+}
+SignalServer_Python.prototype.set = function (key, value, callback, error) {
+    this.request(
+        'set',
+        { 'id': this.room + ':' + key, 'data': value },
+        callback,
+        error
+    );
+}
+SignalServer_Python.prototype.get = function (key, callback, error) {
+    var self = this;
+    this.request(
+        'get',
+        { 'id': this.room + ':' + key },
+        callback,
+        error
+    );
+}
+SignalServer_Python.prototype.poll = function (key, callback, error) {
+    //preserve this
+    var self = this;
+
+    this.get(
+        key,
+        callback,
+        function (message) {
+            console.error('retrying...')
+            setTimeout(function () {
+                self.poll(key, callback, error)
+            }, 500);
+        }
+    );
+}
+</script>
+
+<script src="http://cdn.openkeyval.org/statics/openkeyval.packed.js"></script>
+
+<script id="signalserver_openkeyval">
+    //Use OpenKeyVal as the keystore
+
+    function SignalServer_OpenKeyVal () {}
+</script>
+
+<script>
+//Set the server - others may be available
+window.SignalServer = SignalServer_Python;
+
+var type = 'client',
+    otherType = 'host',
+
+    server = {
+        iceServers: [
+            {url: "stun:stun.l.google.com:19302"},
+            {url: "stun:stun1.l.google.com:19302"},
+            {url: "stun:stun2.l.google.com:19302"},
+            {url: "stun:stun3.l.google.com:19302"},
+            {url: "stun:stun4.l.google.com:19302"}
+        ]
+    },
+    options = {
+        optional: [
+            //Firefox and Chrome interop
+            { DtlsSrtpKeyAgreement: true },
+            //Required by Firefox
+            { RtpDataChannels: true }
+        ]
+    },
+    pc = new RTCPeerConnection(server, options),
+
+    channel = null;
+
+    pc.onicecandidate = function (e) {
+        console.log('onicecandidate');
+
+        //return if there is no candidate
+        if(!e.candidate) { return; }
+        //I don't know what this line is for.
+        pc.onicecandidate = null;
+
+        //get the other ice candidate
+        signal.poll(
+            otherType + ':ice',
+            function (candidate) {
+                console.log('get::' + otherType + ':ice', candidate)
+                pc.addIceCandidate(new RTCIceCandidate(candidate))
+            }
+        );
+
+        //post this ice candidate
+        signal.set(type + ':ice', e.candidate)
+    }
+
+    function channel_Message(message) {
+        console.log('onmessage');
+        console.log(message);
+        log_textbox.addMessage(message.data);
+    }
+
+    function channel_Open() {
+        log_textbox.addMessage('connection initiated');
+    }
+    function channel_Error() { }
+    function channel_Close() { }
+
+    function bindChannelEvents() {
+        channel.onopen = channel_Open;
+        channel.onmessage = channel_Message;
+        channel.onerror = function () { console.error('channel.onerror'); };
+        channel.onclose = function (e) { console.log('channel.onclose'); }
+    }
+
+    function host(room) {
+        console.log('host::' + room);
+        signal = new SignalServer(room);
+
+        type = 'host';
+        otherType = 'client';
+
+        channel = pc.createDataChannel('myChannel', {});
+        bindChannelEvents();
+
+        pc.createOffer(function  (offer) {
+            pc.setLocalDescription(offer);
+            signal.set('offer', offer);
+
+            signal.poll('answer', function (answer) {
+                if(!answer) { return; }
+                console.log('answer::' + answer)
+                pc.setRemoteDescription(new RTCSessionDescription(answer));
+            });
+        });
+    }
+
+    function join(room) {
+        console.log('join::' + room)
+        signal = new SignalServer(room);
+
+        type = 'client';
+        otherType = 'host';
+
+        pc.ondatachannel = function (e) {
+            console.log('join::ondatachannel')
+            channel = e.channel;
+            bindChannelEvents();
+        }
+
+        signal.poll('offer', function(offer) {
+            console.log('join.offer', offer);
+            pc.setRemoteDescription(new RTCSessionDescription(offer));
+            pc.createAnswer(function (answer) {
+                pc.setLocalDescription(answer);
+                signal.set('answer', answer);
+            })
+        });
+    }
+</script>
+</body>
+</html>
