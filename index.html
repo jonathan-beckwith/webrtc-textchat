@@ -11,7 +11,7 @@
 
     <br />
 
-    Room: <input type="textbox" id="room" value="$DEFAULT_NAME$"/>
+    Room: <input type="textbox" id="room" value=""/>
     <input type="button" value="host" id="host" />
     <input type="button" value="join" id="join" /><br />
 
@@ -50,10 +50,31 @@ Model=function a(b,c,d,e){function f(){var a=this,f={};a.on=function(a,b){(f[a]|
         host_button = document.getElementById('host'),
         join_button = document.getElementById('join');
 
-    host_button.onclick = function () { host(room_text.value) };
-    join_button.onclick = function () { join(room_text.value) };
-    send_button.onclick = function () { send(message_text.value) };
+    function toProperCase(str) {
+        return str.replace(/\w\S*/g, function(txt){return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();});
+    };
 
+    //Generate a silly name.
+    function randomName() {
+        var adjectives = ['adorable','adventurous','aggressive','agreeable','alert','alive','amused','angry','annoyed','annoying','anxious','arrogant','ashamed','attractive','average','awful','bad','beautiful','better','bewildered','black','bloody','blue','blue-eyed','blushing','bored','brainy','brave','breakable','bright','busy','calm','careful','cautious','charming','cheerful','clean','clear','clever','cloudy','clumsy','colorful','combative','comfortable','concerned','condemned','confused','cooperative','courageous','crazy','creepy','crowded','cruel','curious','cute','dangerous','dark','dead','defeated','defiant','delightful','depressed','determined','different','difficult','disgusted','distinct','disturbed','dizzy','doubtful','drab','dull','eager','easy','elated','elegant','embarrassed','enchanting','encouraging','energetic','enthusiastic','envious','evil','excited','expensive','exuberant','fair','faithful','famous','fancy','fantastic','fierce','filthy','fine','foolish','fragile','frail','frantic','friendly','frightened','funny','gentle','gifted','glamorous','gleaming','glorious','good','gorgeous','graceful','grieving','grotesque','grumpy','handsome','happy','healthy','helpful','helpless','hilarious','homeless','homely','horrible','hungry','hurt','ill','important','impossible','inexpensive','innocent','inquisitive','itchy','jealous','jittery','jolly','joyous','kind','lazy','light','lively','lonely','long','lovely','lucky','magnificent','misty','modern','motionless','muddy','mushy','mysterious','nasty','naughty','nervous','nice','nutty','obedient','obnoxious','odd','old-fashioned','open','outrageous','outstanding','panicky','perfect','plain','pleasant','poised','poor','powerful','precious','prickly','proud','puzzled','quaint','real','relieved','repulsive','rich','scary','selfish','shiny','shy','silly','sleepy','smiling','smoggy','sore','sparkling','splendid','spotless','stormy','strange','stupid','successful','super','talented','tame','tender','tense','terrible','testy','thankful','thoughtful','thoughtless','tired','tough','troubled','ugliest','ugly','uninterested','unsightly','unusual','upset','uptight','vast','victorious','vivacious','wandering','weary','wicked','wide-eyed','wild','witty','worrisome','worried','wrong','zany','zealous'],
+            fruits = ['beet','cherry','cranberry','pomegranate','radish','raspberry','rhubarb','strawberry','tomato','watermelon','apricot','carrot','fuyu','kumquat','mango','minola','nectarine','orange','peach','persimmon','pumpkin','satsuma','tangerine','corn','lemon','pear','pineapple','plantain','quince','starfruit','artichoke','arugula','asparagus','avocado','basil','broccoflower','broccoli','cabbage','celery','chard','cilantro','cucumber','edamame','endive','escarole','fennel','honeydew','jalapeno','kale','kiwifruit','leek','lettuce','lime','mache','okra','parsley','pea','spinach','sprout','tomatillo','watercress','zucchini','blueberry','acai','boysenberry','eggplant','fig','radicchio','shallot','turnip','banana','cauliflower','coconut','garlic','ginger','jicama','lychee','mushroom','onion','parsnip','potato','blackberry','date','mushroom','truffle','grapefruit','guava','papaya'];
+
+        return toProperCase(
+            adjectives[Math.floor(Math.random()*adjectives.length)] + ' ' +
+            fruits[Math.floor(Math.random()*fruits.length)]
+        );
+    }
+
+    room_text.value = window.location.hash.substr(1) || randomName();
+    window.location.hash = room_text.value;
+
+    window.addEventListener('hashchange', function (e) {
+        room_text.value = window.location.hash.substr(1) || randomName();
+    })
+
+    host_button.onclick = function () { host(room_text.value); };
+    join_button.onclick = function () { join(room_text.value); };
+    send_button.onclick = function () { send(message_text.value); };
 
     function send(message) {
         message_text.value = '';
@@ -76,91 +97,15 @@ Model=function a(b,c,d,e){function f(){var a=this,f={};a.on=function(a,b){(f[a]|
     });
 </script>
 
-<script id="signalserver_basic">
-    //SignalServer based on localStorage
-    function SignalServer_Basic(room) {
-        this.room = room || (Math.random()*100000000000000000).toString(36);
-        console.log('signal.init::' + this.room);
-    }
-    SignalServer_Basic.prototype.get = function (key, value, callback, error) {
-
-    }
-</script>
-
-<script id="signalserver_python">
-//Connect to the demo signal server.
-function SignalServer_Python(room) {
-    //Call the base constructor
-    SignalServer_Basic.call(this, room);
-}
-//Optional line
-SignalServer_Python.prototype = Object.create(SignalServer_Basic.prototype);
-SignalServer_Python.prototype.request = function (method, data, callback, error) {
-    var xhr = new XMLHttpRequest(),
-        data = data ? JSON.stringify(data) : undefined,
-        callback = callback || function (r) { console.log(r); },
-        error = error || function (r) { console.error(r); };
-
-    xhr.open('POST','http://jon7:8003/' + method);
-    xhr.setRequestHeader('Content-Type', 'application/json');
-
-    xhr.onreadystatechange = function () {
-        if(xhr.readyState === 4 && xhr.status === 200) {
-            callback(JSON.parse(xhr.responseText));
-        }
-
-        if(xhr.readyState === 4 && xhr.status !== 200) {
-            error('ERROR::' + xhr.status + ':' + xhr.statusText);
-        }
-    }
-
-    xhr.send(data);
-}
-SignalServer_Python.prototype.set = function (key, value, callback, error) {
-    this.request(
-        'set',
-        { 'id': this.room + ':' + key, 'data': value },
-        callback,
-        error
-    );
-}
-SignalServer_Python.prototype.get = function (key, callback, error) {
-    var self = this;
-    this.request(
-        'get',
-        { 'id': this.room + ':' + key },
-        callback,
-        error
-    );
-}
-SignalServer_Python.prototype.poll = function (key, callback, error) {
-    //preserve this
-    var self = this;
-
-    this.get(
-        key,
-        callback,
-        function (message) {
-            console.error('retrying...')
-            setTimeout(function () {
-                self.poll(key, callback, error)
-            }, 500);
-        }
-    );
-}
-</script>
+<script src="signal/basic.js"></script>
+<script src="signal/python.js"></script>
 
 <script src="http://cdn.openkeyval.org/statics/openkeyval.packed.js"></script>
-
-<script id="signalserver_openkeyval">
-    //Use OpenKeyVal as the keystore
-
-    function SignalServer_OpenKeyVal () {}
-</script>
+<script src="signal/openkeyval.js"></script>
 
 <script>
 //Set the server - others may be available
-window.SignalServer = SignalServer_Python;
+window.SignalServer = SignalServer_OpenKeyVal;
 
 var type = 'client',
     otherType = 'host',
