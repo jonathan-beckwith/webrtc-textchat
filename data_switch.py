@@ -1,41 +1,36 @@
-from random import choice
+# A simple key/value store webserver.
+
+import os
 import json
+from random import choice
 
 import cherrypy
 
-import os
-current_dir = os.path.dirname(os.path.abspath(__file__))
 
 class Signals():
 
-    rooms = {}
+    data = {}
 
-    def clear(self):
-        self.rooms = {}
-        return json.dumps({ 'keys': [x for x in self.rooms.keys()] })
-    clear.exposed = True
-
-    def list(self):
-        return json.dumps([x for x in self.rooms.keys() if ':offer' in x])
-    list.exposed = True
-
+    # Get a value.
     @cherrypy.tools.json_in()
     def get(self):
-        result = self.rooms.get(
+        result = self.data.get(
             cherrypy.request.json['id'],
             None
         );
 
         if result is None:
             raise cherrypy.HTTPError(404)
+
         return json.dumps(result);
     get.exposed = True
 
+    # Set a value
     @cherrypy.tools.json_in()
     def set(self):
         data = cherrypy.request.json
 
-        self.rooms[data['id']] = data['data']
+        self.data[data['id']] = data['data']
         print('SET:{0}={1}'.format(
             data['id'],
             data['data']
@@ -43,6 +38,7 @@ class Signals():
         return json.dumps({ 'status': 'OK' })
     set.exposed = True
 
+    #By default serve index.html in the cwd
     def default(self):
         return cherrypy.lib.static.serve_file(
             os.path.join(current_dir, 'index.html')
